@@ -1,0 +1,777 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="uft-8">
+  <title>3D MODEL</title>
+  <style type="text/css">
+    body {
+      background-color: #ffffff;
+    }
+
+    p {
+      font-size: 20px;
+      color: rgb(0,0,0);
+      margin: 0px;
+      padding: 0px;
+    }
+
+    canvas {
+      border: 5px solid #000000;
+      background-color: #ffffff;
+      margin: 0px;
+      padding: 0px;
+    }
+
+    .container {
+      display: flex;
+    }
+
+    .information {
+      margin: 20px;
+    }
+    </style>
+</head>
+<body>
+
+  <div class="container">
+    <canvas id="can"></canvas>
+
+    <div class="information">
+      <p id="observerCoordinates"></p>
+      <p id="viewAngle"></p>
+      <p id="front"></p>
+      <p id="right"></p>
+      <p id="up"></p>
+
+      <p id="pressedKey"></p>
+      <p id="keepL"></p>
+
+      <p id="totalTime"></p>
+      <p id="fps"></p>
+
+    </div>
+
+</div>
+
+
+
+<script>
+
+  //キャンバスサイズ
+  const canvas_width = 720;
+  const canvas_height = 540;
+
+  //フィールドサイズ
+  const field_width = canvas_width;
+  const field_height = canvas_height;
+
+  //キャンバス描画
+  let canvas = document.getElementById("can");
+  let ctx = canvas.getContext("2d");
+  can.width = canvas_width;
+  can.height = canvas_height;
+
+
+
+  //キャンバスの枠
+  let line_width = 1;
+
+  ctx.lineWidth = line_width * 2;  //キャンバス外の物体は表示されないため、実際の太さは設定の半分 https://shanabrian.com/web/javascript/canvas-line-width.php
+    ctx.strokeStyle = "black";
+    ctx.strokeRect(0, 0, canvas_width, canvas_height);
+    //ctx.stroke();
+
+
+
+  //キーボード入力を取得
+  document.addEventListener("keydown", keyDownHandler);
+  document.addEventListener("keyup", keyUpHandler);
+  //マウス操作を取得
+  document.addEventListener("mousemove", mouseMoveHandler);
+  //マウスクリックを取得
+  document.addEventListener("click", clickHandler);
+
+  canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+  document.exitPointerLock = document.exitPointerLock || document.mozExitPointerLock;
+
+//キーアクション感知
+let keepR = false;
+let keepL = false;
+let keepU = false;
+let keepD = false;
+let keepRv = false;
+let keepLv = false;
+let keepUv = false;
+let keepDv = false;
+
+function keyDownHandler( e ) {
+	if(e.key === "d") {keepR = true;}
+  if (e.key === "a") {keepL = true;}
+  if (e.key === "w") {keepU = true;}
+  if (e.key === "s") {keepD = true;}
+  if (e.key === "Right" || e.key === "ArrowRight") {keepRv = true;}
+  if (e.key === "Left" || e.key === "ArrowLeft") {keepLv = true;}
+  if (e.key === "Up" || e.key === "ArrowUp") {keepUv = true;}
+  if (e.key === "Down" || e.key === "ArrowDown") {keepDv = true;}
+}
+function keyUpHandler( e ) {
+	if(e.key === "d") {keepR = false;}
+  if(e.key === "a") {keepL = false;}
+  if (e.key === "w") {keepU = false;}
+  if (e.key === "s") {keepD = false;}
+  if (e.key === "Right" || e.key === "ArrowRight") {keepRv = false;}
+  if (e.key === "Left" || e.key === "ArrowLeft") {keepLv = false;}
+  if (e.key === "Up" || e.key === "ArrowUp") {keepUv = false;}
+  if (e.key === "Down" || e.key === "ArrowDown") {keepDv = false;}
+}
+
+//マウス感度　e.movementX,e.movementYの値をこれで割る
+const mouseSensitivity = 8;
+
+//マウス操作
+function mouseMoveHandler( e ){
+  if(mouseMoveAllow){
+    theta += e.movementX/mouseSensitivity; //theta
+    phi += -e.movementY/mouseSensitivity; //phi
+    if(theta >= 360){
+      theta -= 360;
+    }
+    if(theta < 0){
+      theta += 360;
+    }
+    if(phi >= 360){
+      phi -= 360;
+    }
+    if(phi < 0){
+      phi += 360;
+    }
+  }
+}
+
+//クリックでマウス操作のON/OFFを切り替える
+let mouseMoveAllow = false;
+
+function clickHandler( e ){
+  if(mouseMoveAllow){
+    mouseMoveAllow = false;
+    document.exitPointerLock();
+  }else if(!mouseMoveAllow){
+    mouseMoveAllow = true;
+    canvas.requestPointerLock();
+  }
+}
+
+let fps = 0;
+let frame = 0;
+let startTime = new Date().getTime();
+let endTime;
+
+//----------------------------------------------------------------------------------------------------------------------------------------------
+
+//3次元ベクトルの定義
+function v(x,y,z){
+  return [x,y,z];
+}
+//足し算
+function v_add(p,q){
+  return [p[0]+q[0],p[1]+q[1],p[2]+q[2]];
+}
+//引き算
+function v_sub(p,q){
+  return [p[0]-q[0],p[1]-q[1],p[2]-q[2]];
+}
+//実数倍
+function v_time(p,n){
+  return [n*p[0],n*p[1],n*p[2]];
+}
+//内積
+function v_ip(p,q){
+  return p[0]*q[0]+p[1]*q[1]+p[2]*q[2];
+}
+//外積 ※座標軸が通常と異なるため外積の向きに注意
+function v_cp(p,q){
+  return [p[1]*q[2] - p[2]*q[1], p[2]*q[0] - p[0]*q[2], p[0]*q[1] - p[1]*q[0]];
+}
+//2点間の距離
+function v_m(p,q){
+  return Math.sqrt((p[0]-q[0])**2 + (p[1]-q[1])**2 + (p[2]-q[2])**2);
+}
+//原点からの距離（絶対値）
+function v_z(p){
+  return Math.sqrt(p[0]**2 + p[1]**2 + p[2]**2);
+}
+//単位ベクトル化
+function v_one(p){
+  return [p[0]/v_z(p),p[1]/v_z(p),p[2]/v_z(p)];
+}
+//ベクトルの複製
+function v_clone(p){
+  return [p[0],p[1],p[2]];
+}
+//点の座標を取得
+function pointCoordinate(p){
+  return [p[0]+x,p[1]+y,p[2]+z];
+}
+//観測者の座標を取得
+function observerCoordinate(){
+  return [x,y,z];
+}
+//観測者の目線角度を取得（出力:2次元ベクトル）
+function observerViewAngle(){
+  return [theta,phi];
+}
+
+//視線方向単位ベクトル
+function viewFront(){
+  return [Math.sin(deg_rad(theta))*Math.cos(deg_rad(phi)),Math.sin(deg_rad(phi)),Math.cos(deg_rad(theta))*Math.cos(deg_rad(phi))];
+}
+//視線横方向単位ベクトル
+function viewSide(){
+  return [Math.cos(deg_rad(theta)),0,-Math.sin(deg_rad(theta))];
+}
+//視線縦垂直方向単位ベクトル
+function viewUp(){
+  return v_one(v_time(v_cp(viewSide(),viewFront()),-1));
+}
+
+
+
+function view_obj(p){ //xz平面上での視線方向ベクトルと対象点ベクトルのなす角
+
+  /*
+  let a = [pointCoordinate(p)[0],0,pointCoordinate(p)[2]];
+  let b = [viewFront()[0],0,viewFront()[2]];
+  let c = [x,0,z];
+  */
+
+  let degree = rad_deg(Math.acos(v_ip([viewFront()[0],0,viewFront()[2]],v_sub([pointCoordinate(p)[0],0,pointCoordinate(p)[2]],[x,0,z]))/(v_z([viewFront()[0],0,viewFront()[2]])*v_z(v_sub([pointCoordinate(p)[0],0,pointCoordinate(p)[2]],[x,0,z])))));
+
+  if(theta == 0 || theta == 180){
+    if(pointCoordinate(p)[0] >= x){
+      return degree;
+    }else if(pointCoordinate(p)[0] < x){
+      return 360 - degree;
+    }
+  }else if(theta > 0 && theta <180){
+    if(viewFront()[2] * (p[0] - x) /viewFront()[0] + z >= p[2]){
+      return degree;
+    }else if(viewFront()[2] * (p[0] - x) /viewFront()[0] + z < p[2]){
+      return 360 - degree;
+    }
+  }else if(theta > 180 && theta < 360){
+    if(viewFront()[2] * (p[0] - x) /viewFront()[0] + z >= p[2]){
+      return degree;
+    }else if(viewFront()[2] * (p[0] - x) /viewFront()[0] + z < p[2]){
+      return 360 - degree;
+    }
+  }
+}
+function v_o(p){
+  return v_ip(viewFront(),v_sub(pointCoordinate(p),[x,y,z]))/v_z(viewFront()); //点の奥行を取得　p,q:直線の方向ベクトルと始点, r:対象の点
+}
+
+//視点の直方体各頂点座標
+
+/*
+function viewPointX(p){
+  let a = solver3(viewSide(),viewUp(),viewFront(),p1)[0];
+  let b = v_time(viewSide(p),a);
+  return b;
+}
+function viewPointY(p){
+  let a = solver3(viewSide(),viewUp(),viewFront(),p1)[1];
+  let b = v_time(viewUp(p),a);
+  return b;
+}
+function viewPointZ(p){
+  let a = solver3(viewSide(),viewUp(),viewFront(),p1)[2];
+  let b = v_time(viewFront(p),a);
+  return b;
+}
+function viewPointXY(p){
+  return v_add(viewPointX(p),viewPointY(p));
+}
+function viewPointYZ(p){
+  return v_add(viewPointZ(p),viewPointY(p));
+  
+}
+function viewPointZX(p){
+  return v_add(viewPointX(p),viewPointZ(p));
+}
+
+function v_p01(p){
+  return v_add([x,y,z],v_time(viewFront(),v_o(p))); //p01の座標
+}
+
+*/
+
+/*
+function v_y(p){
+  if(viewPointX(p)[0] >= 0){
+    return Math.sqrt(v_m(pointCoordinate(p),[x,y,z])**2 - v_o(p)**2 - pointCoordinate(p)[1]**2);
+  }else if(viewPointX(p)[0] < 0){
+    return -Math.sqrt(v_m(pointCoordinate(p),[x,y,z])**2 - v_o(p)**2 - pointCoordinate(p)[1]**2);
+  }
+}
+  */
+
+//弧度法→ラジアンへ変換
+function deg_rad(x){
+  return x * Math.PI / 180;
+}
+//ラジアン→弧度法へ変換
+function rad_deg(x){
+  return x * 180 / Math.PI;
+}
+
+
+//連立方程式を解きたい
+
+/*
+function h2(p,q,r){
+  if(p[0]*q[1] - p[1]*q[0] != 0){
+    let s = (r[0]*q[1] - r[1]*q[0])/(p[0]*q[1] - p[1]*q[0])
+    let t = (r[0]*p[1] - r[1]*p[0])/(q[0]*p[1] - q[1]*p[0])
+    return [s,t];
+  }else if(p[0]*q[1] - p[1]*q[0] == 0){
+    if(p[0] == 0){
+      let t = r[0]/q[0];
+      let s = (r[1] - q[1]*r[0]/q[0])/p[1];
+    }else if(p[1] == 0){
+      let t = r[1]/q[1];
+      let s = (r[0] - q[0]*r[1]/q[1])/p[0]
+    }
+  }
+}
+*/
+  /*
+function h3(a,b,c,d){
+  return [
+  h2(
+    [a[0]*b[1] - a[1]*b[0], a[0]*b[2] - a[2]*b[0]],
+    [c[0]*b[1] - c[1]*b[0], c[0]*b[2] - c[2]*b[0]],
+    [d[0]*b[1] - d[1]*b[0], d[0]*b[2] - d[2]*b[0]]
+  )[0],
+  h2(
+    [b[0]*a[1] - b[1]*a[0], b[0]*a[2] - b[2]*a[0]],
+    [c[0]*a[1] - c[1]*a[0], c[0]*a[2] - c[2]*a[0]],
+    [d[0]*a[1] - d[1]*a[0], d[0]*a[2] - d[2]*a[0]]
+  )[0],
+  h2(
+    [b[0]*a[1] - b[1]*a[0], b[0]*a[2] - b[2]*a[0]],
+    [c[0]*a[1] - c[1]*a[0], c[0]*a[2] - c[2]*a[0]],
+    [d[0]*a[1] - d[1]*a[0], d[0]*a[2] - d[2]*a[0]]
+  )[1]
+  ];
+}*/
+
+//----------------------------------------------------------------------------------------------------------------------------------------------
+
+//単位行列(2次,3次)
+let im2 = [[1,0],
+          [0,1]];
+let im3 = [[1,0,0],
+          [0,1,0],
+          [0,0,1]];
+
+//行列の定義
+//行列の足し算
+function matrixAdd(a,b){
+  let m_new = [];
+  for(let irow = 0; irow < a.length; irow ++){
+    m_new.push([]);
+    for(let icol = 0; icol < a[irow].length; icol ++){
+      m_new[irow][icol] = a[irow][icol] + b[irow][icol];
+    }
+  }
+  return m_new;
+}
+//行列の引き算
+function matrixSub(a,b){
+  let m_new = [];
+  for(let irow = 0; irow < a.length; irow ++){
+    m_new.push([]);
+    for(let icol = 0; icol < a[irow].length; icol ++){
+      m_new[irow][icol] = a[irow][icol] - b[irow][icol];
+    }
+  }
+  return m_new;
+}
+//行列の実数倍
+function matrixTime(a,number){
+  let m_new = [];
+  for(let irow = 0; irow < a.length; irow ++){
+    m_new.push([]);
+    for(let icol = 0; icol < a[irow].length; icol ++){
+      m_new[irow][icol] = a[irow][icol] * number;
+    }
+  }
+  return m_new;
+}
+//行列の要素を抽出
+function matrixGet(a,r,c){
+  return a[r][c];
+}
+//行列の積
+function matrixProduct(a,b){
+  let m_new = [];
+  for(let irow = 0; irow < a.length; irow ++){
+    m_new.push([]);
+    for(let icol = 0; icol < b[0].length; icol ++){
+      m_new[irow].push(0);
+      for(let i = 0; i < b.length; i ++){
+        m_new[irow][icol] += a[irow][i] * b[i][icol];
+      }
+    }
+  }
+  return m_new;
+}
+//行列式
+function det2(a){ //2次
+  return a[0][0]*a[1][1] - a[0][1]*a[1][0];
+}
+function det3(a){ //3次
+  return a[0][0]*a[1][1]*a[2][2] + a[0][1]*a[1][2]*a[2][0] + a[0][2]*a[1][0]*a[2][1] - a[0][0]*a[1][2]*a[2][1] - a[0][1]*a[1][0]*a[2][2] - a[0][2]*a[1][1]*a[2][0];
+}
+//逆行列
+function matrixInverse2(a){ //2次
+  if(det2(a) != 0){
+    return matrixTime([[a[1][1],-a[0][1]],[-a[1][0],a[0][0]]],1/det2(a));
+  }
+}
+function matrixInverse3(a){ //3次
+  if(det3(a) != 0){
+    return matrixTime([[a[1][1]*a[2][2] - a[1][2]*a[2][1], -(a[0][1]*a[2][2] - a[0][2]*a[2][1]), a[0][1]*a[1][2] - a[0][2]*a[1][1]],
+                      [-(a[1][0]*a[2][2] - a[1][2]*a[2][0]), a[0][0]*a[2][2] - a[0][2]*a[2][0], -(a[0][0]*a[1][2] - a[0][2]*a[1][0])],
+                      [a[1][0]*a[2][1] - a[1][1]*a[2][0], -(a[0][0]*a[2][1] - a[0][1]*a[2][0]), a[0][0]*a[1][1] - a[0][1]*a[1][0]]],1/det3(a));
+  }
+}
+//転置  
+function matrixTranspose(a){
+  let b = [];
+  for(let c = 0; c < a[0].length; c ++){
+    b.push([]);
+    for(let r = 0; r < a.length; r ++){
+      b[c][r] = a[r][c];
+    }
+  }
+  return b;
+}
+//ベクトル→一行行列変換
+function vectorToMatrix(a){
+  return [a];
+}
+//一行行列→ベクトル変換
+function MatrixToVector(a){
+  return a[0];
+}
+
+//2元1次方程式
+function equation2(a,b){
+  return matrixProduct(matrixInverse2(a),b);
+}
+//3元1次方程式
+function equation3(a,b){
+  return matrixProduct(matrixInverse3(a),b);
+}
+
+//3元一次方程式 入力:a,b,c,dともにベクトル、出力:ベクトル
+function solver3(a,b,c,d){
+  let e = matrixTranspose([a,b,c]);
+  let f = equation3(e,matrixTranspose(vectorToMatrix(d)));
+  return MatrixToVector(matrixTranspose(f)); //f(3行1列行列)を転置して1行3列行列変換、さらにベクトルに変換
+}
+
+//直線と平面の交点の座標を求める
+function findIntersection(s,f){ //p:直線の方向ベクトル,q:直線状の一点
+
+  let p = v_sub(f,s);
+  let q = pointCoordinate(s);
+  let a = v_add(v_time(viewFront(),d),[x,y,z]);
+  let b = v_add(a,viewSide());
+  let c = v_add(a,viewUp());
+
+  let m = [
+    [p[0], -a[0]+c[0], -b[0]+c[0]],
+    [p[1], -a[1]+c[1], -b[1]+c[1]],
+    [p[2], -a[2]+c[2], -b[2]+c[2]]
+  ]
+  let n = [
+    [-q[0]+c[0]],
+    [-q[1]+c[1]],
+    [-q[2]+c[2]]
+  ]
+
+  if(det3(m) != 0){
+    let k = equation3(m,n);
+
+    let s_k = k[0][0];
+    let t_k = k[1][0];
+    let u_k = k[2][0];
+
+    let ix = p[0]*s_k + q[0];
+    let iy = p[1]*s_k + q[1];
+    let iz = p[2]*s_k + q[2];
+
+    return [ix,iy,iz];
+  }
+
+}
+
+
+
+//-----------------------------------------------------------------------------------------------------------------------------------------------
+
+//線を引く
+function line(s,f){
+
+  s = v_time(s,CamCanvasRate);
+  f = v_time(f,CamCanvasRate);
+
+    ctx.beginPath();
+    let s_x = solver3(viewSide(),viewUp(),viewFront(),s)[0];
+    let s_y = solver3(viewSide(),viewUp(),viewFront(),s)[1];
+    let s_z = solver3(viewSide(),viewUp(),viewFront(),s)[2];
+    let f_x = solver3(viewSide(),viewUp(),viewFront(),f)[0];
+    let f_y = solver3(viewSide(),viewUp(),viewFront(),f)[1];
+    let f_z = solver3(viewSide(),viewUp(),viewFront(),f)[2];
+    if(s_z >= d && f_z >= d){
+      ctx.moveTo(d*s_x/s_z+canvas_width/2, -d*s_y/s_z+canvas_height/2);
+      ctx.lineTo(d*f_x/f_z+canvas_width/2, -d*f_y/f_z+canvas_height/2);
+      ctx.closePath();
+      ctx.stroke();
+    }else{
+      if(s_z < d && f_z >= d){
+        let newPoint = v_sub(findIntersection(s,f),[x,y,z]);
+
+        s_x = solver3(viewSide(),viewUp(),viewFront(),newPoint)[0];
+        s_y = solver3(viewSide(),viewUp(),viewFront(),newPoint)[1];
+        s_z = solver3(viewSide(),viewUp(),viewFront(),newPoint)[2];
+        f_x = solver3(viewSide(),viewUp(),viewFront(),f)[0];
+        f_y = solver3(viewSide(),viewUp(),viewFront(),f)[1];
+        f_z = solver3(viewSide(),viewUp(),viewFront(),f)[2];
+
+        ctx.moveTo(d*s_x/s_z+canvas_width/2, -d*s_y/s_z+canvas_height/2);
+        ctx.lineTo(d*f_x/f_z+canvas_width/2, -d*f_y/f_z+canvas_height/2);
+        ctx.closePath();
+        ctx.stroke();
+      }else if(s_z >= d && f_z < d){
+        let newPoint = v_sub(findIntersection(s,f),[x,y,z]);
+
+        s_x = solver3(viewSide(),viewUp(),viewFront(),s)[0];
+        s_y = solver3(viewSide(),viewUp(),viewFront(),s)[1];
+        s_z = solver3(viewSide(),viewUp(),viewFront(),s)[2];
+        f_x = solver3(viewSide(),viewUp(),viewFront(),newPoint)[0];
+        f_y = solver3(viewSide(),viewUp(),viewFront(),newPoint)[1];
+        f_z = solver3(viewSide(),viewUp(),viewFront(),newPoint)[2];
+
+        ctx.moveTo(d*s_x/s_z+canvas_width/2, -d*s_y/s_z+canvas_height/2);
+        ctx.lineTo(d*f_x/f_z+canvas_width/2, -d*f_y/f_z+canvas_height/2);
+        ctx.closePath();
+        ctx.stroke();
+      }
+  }
+}
+
+//直方体を描画　観測者からの座標p:,q:
+function createCuboid(p,q){
+  let pq_x_createCuboid = [q[0]-p[0],0,0];//pqベクトルのx,y,z方向ベクトル
+  let pq_y_createCuboid = [0,q[1]-p[1],0];
+  let pq_z_createCuboid = [0,0,q[2]-p[2]];
+
+  let p1_createCuboid = p;
+  let p2_createCuboid = v_add(p,pq_x_createCuboid);
+  let p3_createCuboid = v_add(p2_createCuboid,pq_z_createCuboid);
+  let p4_createCuboid = v_add(p,pq_z_createCuboid);
+  let p5_createCuboid = v_add(p,pq_y_createCuboid);
+  let p6_createCuboid = v_add(p5_createCuboid,pq_x_createCuboid);
+  let p7_createCuboid = q;
+  let p8_createCuboid = v_add(p5_createCuboid,pq_z_createCuboid);
+
+  line(p1_createCuboid,p2_createCuboid);
+  line(p2_createCuboid,p3_createCuboid);
+  line(p3_createCuboid,p4_createCuboid);
+  line(p4_createCuboid,p1_createCuboid);
+  line(p5_createCuboid,p6_createCuboid);
+  line(p6_createCuboid,p7_createCuboid);
+  line(p7_createCuboid,p8_createCuboid);
+  line(p8_createCuboid,p5_createCuboid);
+  line(p1_createCuboid,p5_createCuboid);
+  line(p2_createCuboid,p6_createCuboid);
+  line(p3_createCuboid,p7_createCuboid);
+  line(p4_createCuboid,p8_createCuboid);
+}
+
+//観測者からキャンバスまでの距離　視野を決められる
+let d = 250;
+
+//(canvasの大きさ)/(カメラの大きさ)
+const CamCanvasRate = 100;
+
+//観測者の座標と目線の角度を定める
+let x = 0;
+let y = 0;
+let z = 0;
+let theta = 0;
+let phi = 0;
+
+const speed = 10;
+const view_speed = 2;
+
+//点の座標を定める
+let array = [
+p1 = v(100,-300,500),
+p2 = v(800,200,1000),
+p3 = [-2000,-300,-1400],
+p4 = [2000,500,2600],
+p5 = [-350,-300,750],
+p6 = [-150,-200,950],
+p7 = [-280,-200,820],
+p8 = [-180,-150,920],
+p9 = v(-500,-300,500),
+p10 = v(-200,-300,500),
+p11 = v(-500,-300,700),
+p12 = v(-500,100,500)
+];
+
+//物体の描画
+function draw() {
+
+line(p9,p10);
+line(p10,p11);
+line(p11,p9);
+line(p9,p12);
+line(p10,p12);
+line(p11,p12);
+
+createCuboid(p1,p2);
+createCuboid(p3,p4);
+createCuboid(p5,p6);
+createCuboid(p7,p8);
+
+
+  //キーボード操作（なんでこんなことに）
+  /*
+  if((!keepR && !keepL && !keepU && !keepD)||(keepR && keepL && keepU && keepD)){
+
+  }else if(keepR && keepL && keepU && !keepD){
+
+  }else if(keepR && !keepL && keepU && keepD){
+
+  }else if(keepR && keepL && !keepU && keepD){
+
+  }else if(!keepR && keepL && keepU && keepD){
+
+  }else if(keepR && !keepL && keepU && !keepD){
+
+  }else if(!keepR && keepL && keepU && !keepD){
+
+  }else if(!keepR && keepL && !keepU && keepD){
+
+  }else if(keepR && !keepL && !keepU && keepD){
+
+  }else if(keepR && keepL && !keepU && !keepD){
+
+  }else if(!keepR && !keepL && keepU && keepD){
+
+  } */
+  if(keepR && !keepL){
+    for(let i = 0; i < array.length; i++){
+      array[i][0] -= speed*Math.cos(deg_rad(theta));
+      array[i][2] += speed*Math.sin(deg_rad(theta));
+    }
+    x += speed*Math.cos(deg_rad(theta));
+    z -= speed*Math.sin(deg_rad(theta));
+  }
+  if(!keepR && keepL){
+    for(let i = 0; i < array.length; i++){
+      array[i][0] += speed*Math.cos(deg_rad(theta));
+      array[i][2] -= speed*Math.sin(deg_rad(theta));
+    }
+    x -= speed*Math.cos(deg_rad(theta));
+    z += speed*Math.sin(deg_rad(theta));
+  }
+  if(keepU && !keepD){
+    for(let i = 0; i < array.length; i++){
+      array[i][0] -= speed*Math.sin(deg_rad(theta));
+      array[i][2] -= speed*Math.cos(deg_rad(theta));
+    }
+    x += speed*Math.sin(deg_rad(theta));
+    z += speed*Math.cos(deg_rad(theta));
+  }
+  if(!keepU && keepD){
+    for(let i = 0; i < array.length; i++){
+      array[i][0] += speed*Math.sin(deg_rad(theta));
+      array[i][2] += speed*Math.cos(deg_rad(theta));
+    }
+    x -= speed*Math.sin(deg_rad(theta));
+    z -= speed*Math.cos(deg_rad(theta));
+  }
+
+  if(keepRv && !keepLv){
+    theta += view_speed;
+    if(theta >= 360){
+      theta -= 360;
+    }
+  }
+  if(!keepRv && keepLv){
+    theta -= view_speed;
+    if(theta < 0){
+      theta += 360;
+    }
+  }
+  if(keepUv && !keepDv){
+    phi += view_speed;
+    if(phi >= 360){
+      phi -= 360;
+    }
+  }
+  if(!keepUv && keepDv){
+    phi -= view_speed;
+    if(phi < 0){
+      phi += 360;
+    }
+  }
+
+
+  frame ++;
+  endTime = new Date().getTime();
+  if(endTime - startTime >= 1000){
+        fps = frame;
+        frame = 0;
+        startTime = new Date().getTime();
+    }
+
+document.getElementById("observerCoordinates").innerHTML = "Observer Coordinates x:" + Math.round(x *10**8)/10**8 + ", y:" + Math.round(y  *10**8)/10**8 + ", z:" + Math.round(z *10**8)/10**8;
+document.getElementById("viewAngle").innerHTML = "View Angle theta:" + Math.round(observerViewAngle()[0] *10**10)/10**10 + ", phi:" + Math.round(observerViewAngle()[1] *10**10)/10**10;
+document.getElementById("front").innerHTML = "front x:" + Math.round(viewFront()[0] *10**10)/10**10 + ", y:" + Math.round(viewFront()[1] *10**10)/10**10 + ", z:" + Math.round(viewFront()[2] *10**10)/10**10;
+document.getElementById("up").innerHTML = "up x:" + Math.round(viewUp()[0] *10**10)/10**10 + ", y:" + Math.round(viewUp()[1] *10**10)/10**10 + ", z:" + Math.round(viewUp()[2] *10**10)/10**10;
+document.getElementById("right").innerHTML = "right x:" + Math.round(viewSide()[0] *10**10)/10**10 + ", y:" + Math.round(viewSide()[1] *10**10)/10**10 + ", z:" + Math.round(viewSide()[2] *10**10)/10**10;
+document.getElementById("pressedKey").innerHTML = "Pressed Key RIGHT:" + keepR + ", LEFT:" + keepL + ", UP:" + keepU + ", DOWN:" + keepD;
+document.getElementById("keepL").innerHTML = "Pressed Key(view) RIGHT:" + keepRv + ", LEFT:" + keepLv + ", UP:" + keepUv + ", Down:" + keepDv;
+document.getElementById("totalTime").innerHTML = "Total Time:" + new Date().getTime();
+document.getElementById("fps").innerHTML = fps + "fps";
+
+
+
+
+}
+
+draw();
+
+
+//画面ループ更新
+requestAnimationFrame(update);
+function update() {
+  
+  // 全体をクリア
+  ctx.clearRect(0, 0, canvas_width, canvas_height);
+
+  draw();
+
+  requestAnimationFrame(update);
+}
+
+</script>
+</body>
+</html>
