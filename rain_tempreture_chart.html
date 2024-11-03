@@ -6,6 +6,9 @@
     <title>rain_temperature_chart</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
+      button {
+        margin: 10px;
+      }
       #button2 {
         cursor: pointer;
       }
@@ -42,15 +45,11 @@
     <div style="display: flex">
       <canvas id="myChart" width="500" height="500"></canvas>
       <div style="padding: 30px">
-        <button id="button1">地点を生成</button>
-        <button id="button2">正解を確認</button>
-        <p>地点：<span id="place"></span></p>
         <label for="mySelect">データ設定：</label>
         <select id="mySelect">
           <option value="option1">オプション1</option>
-          <option value="option4">オプション0</option>
-        </select>
-        <br />
+          <option value="option4">オプション0</option></select
+        ><br />
         <label for="area">都道府県・地域：</label>
         <select id="area">
           <option value="全国">全国</option>
@@ -107,8 +106,11 @@
           <option value="近畿地方">近畿地方</option>
           <option value="中国地方">中国地方</option>
           <option value="四国地方">四国地方</option>
-          <option value="九州・沖縄地方">九州・沖縄地方</option>
-        </select>
+          <option value="九州・沖縄地方">九州・沖縄地方</option></select
+        ><br />
+        <button id="button1">地点を生成</button><br />
+        <button id="button2">正解を確認</button>
+        <p>地点：<span id="place"></span></p>
       </div>
     </div>
 
