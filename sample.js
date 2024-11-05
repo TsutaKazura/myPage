@@ -1,4 +1,4 @@
-import list from './data.js'; 
+//import list from './data.js'; 
 
 let t = [2,3,4];
         
